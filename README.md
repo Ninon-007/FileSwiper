@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # File Swiper 🗂️
 
 A swipe-based file cleaning application for Android that helps you quickly organize and delete files from your Downloads folder.
@@ -122,3 +123,6 @@ This project is open source and available for personal and commercial use.
 ## Author ✍️
 
 Built with Flutter 💙
+=======
+# FileSwiper
+>>>>>>> 96d5fa0f125417320bc9d6f357edeae56f78be21
