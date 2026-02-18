@@ -24,7 +24,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace "com.example.file_swiper"
-    compileSdk 36 // Changed from 34 to 36
+    compileSdk 36
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -41,8 +41,8 @@ android {
 
     defaultConfig {
         applicationId "com.example.file_swiper"
-        minSdkVersion flutter.minSdkVersion // Use 21 for better compatibility with PDF plugins
-        targetSdk 36 // Changed from 34 to 36
+        minSdkVersion flutter.minSdkVersion
+        targetSdk 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
