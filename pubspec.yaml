@@ -48,6 +48,9 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   file_picker: ^8.0.0
+  font_awesome_flutter: ^10.6.0  # For WhatsApp Icon
+  video_thumbnail: ^0.5.3       # For Video Previews
+  audioplayers: ^6.1.0
   
 dev_dependencies:
   flutter_test:

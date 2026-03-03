@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import 'file_provider.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'whatsapp_screen.dart'; // ✅ NEW IMPORT
 import 'main.dart'; // To navigate to the Swiper Screen
 
 class DashboardScreen extends StatelessWidget {
@@ -10,7 +12,7 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text(
           "File Swiper",
@@ -53,9 +55,17 @@ class DashboardScreen extends StatelessWidget {
                   _buildDashboardCard(
                     context,
                     title: "WhatsApp",
-                    icon: Icons.chat,
+                    icon: FontAwesomeIcons.whatsapp, // ✅ OFFICIAL ICON
                     color: Colors.green,
-                    onTap: () => _openWhatsAppCleaner(context),
+                    onTap: () {
+                      // ✅ GO TO SUB-MENU INSTEAD OF DIRECT SWIPER
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const WhatsAppMenuScreen(),
+                        ),
+                      );
+                    },
                   ),
                   _buildDashboardCard(
                     context,
@@ -145,18 +155,6 @@ class DashboardScreen extends StatelessWidget {
     ).setTargetFolder('/storage/emulated/0/Download');
 
     // 2. Navigate to Swiper
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-    );
-  }
-
-  void _openWhatsAppCleaner(BuildContext context) {
-    // Hardcoded path for Android 11+ WhatsApp Media
-    String path =
-        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images';
-
-    Provider.of<FileProvider>(context, listen: false).setTargetFolder(path);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const HomeScreen()),
