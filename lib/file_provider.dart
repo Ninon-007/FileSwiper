@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class FileProvider with ChangeNotifier {
@@ -7,41 +7,51 @@ class FileProvider with ChangeNotifier {
   List<FileSystemEntity> _deleteQueue = [];
   bool _isLoading = true;
   String? _errorMessage;
+  
+  // ✅ NEW: Store the current target folder (Default to Downloads)
+  String _currentPath = '/storage/emulated/0/Download'; 
 
   List<FileSystemEntity> get files => _files;
   List<FileSystemEntity> get deleteQueue => _deleteQueue;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // Initialize and load files
+  // ✅ NEW: Method to change the folder we are cleaning
+  void setTargetFolder(String path) {
+    _currentPath = path;
+    _files = []; // Clear old files immediately so UI doesn't show wrong stuff
+    _deleteQueue = []; // Clear delete queue to avoid accidents
+    notifyListeners();
+    loadFiles(); // Load the new folder
+  }
+
   Future<void> loadFiles() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // 1. Request Permissions
       if (!await _requestPermission()) {
-        _errorMessage = "Permission denied. Please enable 'All Files Access' in settings.";
+        _errorMessage = "Permission denied. Please allow file access.";
         _isLoading = false;
         notifyListeners();
         return;
       }
 
-      // 2. Get Downloads Directory
-      // targeting standard Android Download folder
-      Directory downloadsDir = Directory('/storage/emulated/0/Download');
+      // ✅ USE THE DYNAMIC PATH
+      Directory dir = Directory(_currentPath);
 
-      if (await downloadsDir.exists()) {
-        // 3. List files (async)
-        // filtering for files only (skipping folders for now)
-        var rawFiles = await downloadsDir.list().toList();
+      if (await dir.exists()) {
+        // List files (non-recursive, top level only)
+        var rawFiles = await dir.list().toList();
+        
+        // Filter: Keep only Files (ignore folders for now to prevent crashes)
         _files = rawFiles.whereType<File>().toList();
         
         // Sort by date modified (newest first)
         _files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
       } else {
-        _errorMessage = "Downloads folder not found.";
+        _errorMessage = "Folder not found: $_currentPath";
       }
     } catch (e) {
       _errorMessage = "Error loading files: $e";
@@ -52,27 +62,27 @@ class FileProvider with ChangeNotifier {
   }
 
   Future<bool> _requestPermission() async {
-    // Check for MANAGE_EXTERNAL_STORAGE (Android 11+)
     if (await Permission.manageExternalStorage.request().isGranted) {
       return true;
     }
-    // Fallback for older Android
-    if (await Permission.storage.request().isGranted) {
-      return true;
-    }
-    return false;
+    return await Permission.storage.request().isGranted;
   }
 
   void swipeLeft(int index) {
-    if (index < _files.length) {
-      _deleteQueue.add(_files[index]);
-      // We don't remove it from _files yet to keep the card stack consistent until refresh
-      notifyListeners();
-    }
+    _deleteQueue.add(_files[index]);
+    // We don't remove from _files yet, visually handled by swiper
+    notifyListeners();
   }
 
   void swipeRight(int index) {
-    // User kept the file
+    // Kept safe, do nothing
+  }
+
+  void undoLastDelete() {
+    if (_deleteQueue.isNotEmpty) {
+      _deleteQueue.removeLast();
+      notifyListeners();
+    }
   }
 
   Future<void> commitDeletion() async {
@@ -82,17 +92,10 @@ class FileProvider with ChangeNotifier {
           await file.delete();
         }
       } catch (e) {
-        if (kDebugMode) print("Failed to delete ${file.path}: $e");
+        debugPrint("Error deleting file: $e");
       }
     }
     _deleteQueue.clear();
     await loadFiles(); // Refresh list
-  }
-  
-  void undoLastDelete() {
-    if (_deleteQueue.isNotEmpty) {
-      _deleteQueue.removeLast();
-      notifyListeners();
-    }
   }
 }
