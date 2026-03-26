@@ -7,22 +7,20 @@ class FileProvider with ChangeNotifier {
   List<FileSystemEntity> _deleteQueue = [];
   bool _isLoading = true;
   String? _errorMessage;
-  
-  // ✅ NEW: Store the current target folder (Default to Downloads)
-  String _currentPath = '/storage/emulated/0/Download'; 
+
+  String _currentPath = '/storage/emulated/0/Download';
 
   List<FileSystemEntity> get files => _files;
   List<FileSystemEntity> get deleteQueue => _deleteQueue;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // ✅ NEW: Method to change the folder we are cleaning
   void setTargetFolder(String path) {
     _currentPath = path;
-    _files = []; // Clear old files immediately so UI doesn't show wrong stuff
-    _deleteQueue = []; // Clear delete queue to avoid accidents
+    _files = [];
+    _deleteQueue = [];
     notifyListeners();
-    loadFiles(); // Load the new folder
+    loadFiles();
   }
 
   Future<void> loadFiles() async {
@@ -38,23 +36,21 @@ class FileProvider with ChangeNotifier {
         return;
       }
 
-      // ✅ USE THE DYNAMIC PATH
       Directory dir = Directory(_currentPath);
 
       if (await dir.exists()) {
-        // List files (non-recursive, top level only)
         var rawFiles = await dir.list().toList();
-        
-        // Filter: Keep only Files (ignore folders for now to prevent crashes)
         _files = rawFiles.whereType<File>().toList();
-        
-        // Sort by date modified (newest first)
-        _files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+
+        // Sorts files so the most recently modified/added appear first
+        _files.sort(
+          (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+        );
       } else {
         _errorMessage = "Folder not found: $_currentPath";
       }
     } catch (e) {
-      _errorMessage = "Error loading files: $e";
+      debugPrint("Error loading files: $e");
     }
 
     _isLoading = false;
@@ -70,7 +66,6 @@ class FileProvider with ChangeNotifier {
 
   void swipeLeft(int index) {
     _deleteQueue.add(_files[index]);
-    // We don't remove from _files yet, visually handled by swiper
     notifyListeners();
   }
 
@@ -78,9 +73,10 @@ class FileProvider with ChangeNotifier {
     // Kept safe, do nothing
   }
 
-  void undoLastDelete() {
-    if (_deleteQueue.isNotEmpty) {
-      _deleteQueue.removeLast();
+  // Target specific files to restore from the grid
+  void restoreFile(FileSystemEntity file) {
+    if (_deleteQueue.contains(file)) {
+      _deleteQueue.remove(file);
       notifyListeners();
     }
   }
@@ -96,6 +92,6 @@ class FileProvider with ChangeNotifier {
       }
     }
     _deleteQueue.clear();
-    await loadFiles(); // Refresh list
+    await loadFiles();
   }
 }

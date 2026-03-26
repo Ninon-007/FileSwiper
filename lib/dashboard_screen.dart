@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
-import 'file_provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'whatsapp_screen.dart'; // ✅ NEW IMPORT
-import 'main.dart'; // To navigate to the Swiper Screen
+
+import 'file_provider.dart';
+import 'main.dart';
+import 'whatsapp_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -12,7 +13,7 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      // ✅ Removed hardcoded background color, letting the Theme take over
       appBar: AppBar(
         title: const Text(
           "File Swiper",
@@ -20,52 +21,34 @@ class DashboardScreen extends StatelessWidget {
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        // ✅ Removed hardcoded AppBar colors
       ),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
         child: Column(
           children: [
-            // Header / Logo Area
-            Container(
-              height: 150,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.deepPurple[50],
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.cleaning_services,
-                  size: 60,
-                  color: Colors.deepPurple,
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-
+            // ✅ Brush container completely removed
+            const SizedBox(height: 10), // A little breathing room at the top
             // The 4 Main Options
             Expanded(
               child: GridView.count(
                 crossAxisCount: 2,
                 crossAxisSpacing: 15,
                 mainAxisSpacing: 15,
+                childAspectRatio:
+                    1.1, // ✅ Makes the cards slightly more rectangular/smaller
                 children: [
                   _buildDashboardCard(
                     context,
                     title: "WhatsApp",
-                    icon: FontAwesomeIcons.whatsapp, // ✅ OFFICIAL ICON
+                    icon: FontAwesomeIcons.whatsapp,
                     color: Colors.green,
-                    onTap: () {
-                      // ✅ GO TO SUB-MENU INSTEAD OF DIRECT SWIPER
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const WhatsAppMenuScreen(),
-                        ),
-                      );
-                    },
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const WhatsAppMenuScreen(),
+                      ),
+                    ),
                   ),
                   _buildDashboardCard(
                     context,
@@ -108,35 +91,46 @@ class DashboardScreen extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(25),
-          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+          color: Theme.of(context).cardColor, // ✅ Uses system theme card color
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: color.withValues(alpha: 0.3),
+            width: 1.5,
+          ), // Subtle colored border
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.05),
+              blurRadius: 10,
+              spreadRadius: 2,
+            ),
+          ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(15),
+              padding: const EdgeInsets.all(
+                14,
+              ), // ✅ Slightly smaller icon container
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
               ),
-              child: Icon(icon, size: 30, color: color),
+              child: Icon(
+                icon,
+                size: 28,
+                color: color,
+              ), // ✅ Slightly smaller icon
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 12),
             Text(
               title,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
+                color: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.color, // ✅ Adapts to dark/light text
               ),
             ),
           ],
@@ -145,16 +139,11 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // --- Logic for Buttons ---
-
   void _openDownloadsCleaner(BuildContext context) {
-    // 1. Set the provider to target Downloads
     Provider.of<FileProvider>(
       context,
       listen: false,
     ).setTargetFolder('/storage/emulated/0/Download');
-
-    // 2. Navigate to Swiper
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -162,10 +151,10 @@ class DashboardScreen extends StatelessWidget {
   }
 
   void _openGalleryCleaner(BuildContext context) {
-    // Standard Camera folder
-    String path = '/storage/emulated/0/DCIM/Camera';
-
-    Provider.of<FileProvider>(context, listen: false).setTargetFolder(path);
+    Provider.of<FileProvider>(
+      context,
+      listen: false,
+    ).setTargetFolder('/storage/emulated/0/DCIM/Camera');
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -173,12 +162,8 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Future<void> _pickCustomFolder(BuildContext context) async {
-    // Pick a folder
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-
-    // ✅ SAFETY CHECK: unexpected things happen if we don't check if the screen is still there
     if (!context.mounted) return;
-
     if (selectedDirectory != null) {
       Provider.of<FileProvider>(
         context,
