@@ -6,57 +6,128 @@ import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
-import 'package:open_file/open_file.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
 import 'dart:typed_data';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'file_provider.dart';
 import 'dashboard_screen.dart';
+import 'onboarding_screen.dart';
 
-void main() {
+class ThemeProvider with ChangeNotifier {
+  String _currentTheme;
+  ThemeProvider(this._currentTheme);
+  String get currentTheme => _currentTheme;
+
+  void setTheme(String theme) async {
+    _currentTheme = theme;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selected_theme', theme);
+  }
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  bool seenOnboarding = false;
+  String savedTheme = 'peach';
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
+    savedTheme = prefs.getString('selected_theme') ?? 'peach';
+  } catch (e) {
+    debugPrint("Error reading preferences: $e");
+  }
+
   runApp(
     MultiProvider(
-      providers: [ChangeNotifierProvider(create: (_) => FileProvider())],
-      child: const FileSwiperApp(),
+      providers: [
+        ChangeNotifierProvider(create: (_) => FileProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider(savedTheme)),
+      ],
+      child: FileSwiperApp(seenOnboarding: seenOnboarding),
     ),
   );
 }
 
 class FileSwiperApp extends StatelessWidget {
-  const FileSwiperApp({super.key});
+  final bool seenOnboarding;
+
+  const FileSwiperApp({super.key, required this.seenOnboarding});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'File Swiper',
-      themeMode: ThemeMode.system,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        scaffoldBackgroundColor: Colors.grey[100],
-        cardColor: Colors.white,
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        bool isPeach = themeProvider.currentTheme == 'peach';
+
+        ThemeData peachTheme = ThemeData(
+          useMaterial3: true,
+          scaffoldBackgroundColor: const Color(0xFFFFF5F0),
+          cardColor: const Color(0xFFFBE8D5),
+          primaryColor: const Color(0xFFFF8A65),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Colors.transparent,
+            foregroundColor: Color(0xFF333333),
+            elevation: 0,
+            systemOverlayStyle: SystemUiOverlayStyle.dark,
+          ),
+          textTheme: GoogleFonts.lexendTextTheme(),
+          iconTheme: const IconThemeData(color: Color(0xFF333333)),
+        );
+
+        ThemeData darkTheme = ThemeData(
+          useMaterial3: true,
           brightness: Brightness.dark,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF121212),
-          foregroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: true,
-          systemOverlayStyle: SystemUiOverlayStyle.light, 
-        ),
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        cardColor: const Color(0xFF1E1E1E),
-      ),
-      home: const DashboardScreen(),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.deepPurple,
+            brightness: Brightness.dark,
+          ),
+          scaffoldBackgroundColor: const Color(0xFF121212),
+          cardColor: const Color(0xFF1E1E1E),
+          primaryColor: Colors.deepPurpleAccent,
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Colors.transparent,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            systemOverlayStyle: SystemUiOverlayStyle.light,
+          ),
+          textTheme: GoogleFonts.lexendTextTheme(ThemeData.dark().textTheme),
+          iconTheme: const IconThemeData(color: Colors.white),
+        );
+
+        ThemeData lightTheme = ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.light,
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          scaffoldBackgroundColor: Colors.grey[100],
+          cardColor: Colors.white,
+          primaryColor: Colors.deepPurple,
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Colors.transparent,
+            foregroundColor: Colors.black,
+            elevation: 0,
+            systemOverlayStyle: SystemUiOverlayStyle.dark,
+          ),
+          textTheme: GoogleFonts.lexendTextTheme(ThemeData.light().textTheme),
+          iconTheme: const IconThemeData(color: Colors.black),
+        );
+
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Fileswiper',
+          themeMode: isPeach ? ThemeMode.light : ThemeMode.system,
+          theme: isPeach ? peachTheme : lightTheme,
+          darkTheme: isPeach ? peachTheme : darkTheme,
+          home: seenOnboarding
+              ? const DashboardScreen()
+              : const OnboardingScreen(),
+        );
+      },
     );
   }
 }
@@ -70,6 +141,28 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final CardSwiperController controller = CardSwiperController();
+  bool _showTutorial = false;
+  bool _isFinished = false; // ✅ Added to track when the deck empties
+
+  @override
+  void initState() {
+    super.initState();
+    _checkTutorialStatus();
+  }
+
+  Future<void> _checkTutorialStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool seen = prefs.getBool('seen_swipe_tutorial') ?? false;
+    if (!seen) {
+      setState(() => _showTutorial = true);
+    }
+  }
+
+  Future<void> _dismissTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('seen_swipe_tutorial', true);
+    setState(() => _showTutorial = false);
+  }
 
   @override
   void dispose() {
@@ -82,110 +175,310 @@ class _HomeScreenState extends State<HomeScreen> {
     final fileProvider = Provider.of<FileProvider>(context);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text(
-          "Swipe to Clean",
-          style: TextStyle(fontWeight: FontWeight.bold),
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded),
+            onPressed: () => Navigator.pop(context),
+          ),
         ),
-        centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_sweep),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const DeleteQueueScreen()),
+          Padding(
+            padding: const EdgeInsets.only(right: 20.0, top: 8.0, bottom: 8.0),
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DeleteQueueScreen()),
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      "${fileProvider.deleteQueue.length}",
+                      style: GoogleFonts.lexend(
+                        color: Colors.redAccent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
       ),
       body: fileProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : fileProvider.files.isEmpty
+          : (fileProvider.files.isEmpty ||
+                _isFinished) // ✅ NOW CHECKS IF FINISHED
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(
-                    Icons.check_circle_outline,
+                    Icons.inventory_2_outlined, // Changed to a premium box icon
                     size: 80,
                     color: Colors.green,
                   ),
                   const SizedBox(height: 20),
+                  // ✅ UPDATED PREMIUM END MESSAGE
                   Text(
-                    "All Clean!",
-                    style: Theme.of(context).textTheme.headlineSmall,
+                    "Folder completely scanned!",
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(
+                        context,
+                      ).textTheme.bodyLarge?.color?.withValues(alpha: 0.8),
+                    ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10),
+                  Text(
+                    "You've reviewed all files here.",
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 30),
                   ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
                     onPressed: () => Navigator.pop(context),
-                    child: const Text("Back to Dashboard"),
+                    child: const Text(
+                      "Return to Dashboard",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
             )
-          : Column(
+          : Stack(
               children: [
-                Expanded(
-                  child: CardSwiper(
-                    controller: controller,
-                    cardsCount: fileProvider.files.length,
-                    onSwipe:
-                        (
-                          int previousIndex,
-                          int? currentIndex,
-                          CardSwiperDirection direction,
-                        ) {
-                          if (direction == CardSwiperDirection.left) {
-                            fileProvider.swipeLeft(previousIndex);
-                          } else {
-                            fileProvider.swipeRight(previousIndex);
-                          }
-                          return true;
-                        },
-                    numberOfCardsDisplayed: 2,
-                    cardBuilder: (context, index, x, y) {
-                      return FileCard(file: fileProvider.files[index]);
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 30.0,
-                    horizontal: 50.0,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                SafeArea(
+                  bottom: false,
+                  child: Column(
                     children: [
-                      _buildCircleButton(
-                        Icons.delete,
-                        Colors.red,
-                        () => controller.swipe(CardSwiperDirection.left),
+                      Expanded(
+                        flex: 5,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 10.0),
+                          child: CardSwiper(
+                            controller: controller,
+                            cardsCount: fileProvider.files.length,
+                            isLoop: false,
+                            // ✅ THIS TRIGGERS THE "END OF FILES" SCREEN
+                            onEnd: () {
+                              setState(() {
+                                _isFinished = true;
+                              });
+                            },
+                            onSwipe:
+                                (
+                                  int previousIndex,
+                                  int? currentIndex,
+                                  CardSwiperDirection direction,
+                                ) {
+                                  HapticFeedback.mediumImpact();
+                                  if (direction == CardSwiperDirection.left) {
+                                    fileProvider.swipeLeft(previousIndex);
+                                  } else {
+                                    fileProvider.swipeRight(previousIndex);
+                                  }
+                                  return true;
+                                },
+                            numberOfCardsDisplayed: 2,
+                            cardBuilder: (context, index, x, y) {
+                              return FileCard(file: fileProvider.files[index]);
+                            },
+                          ),
+                        ),
                       ),
-                      _buildCircleButton(
-                        Icons.check,
-                        Colors.green,
-                        () => controller.swipe(CardSwiperDirection.right),
+                      Expanded(
+                        flex: 1,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 60.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildPremiumButton(
+                                Icons.close_rounded,
+                                Colors.redAccent,
+                                () =>
+                                    controller.swipe(CardSwiperDirection.left),
+                                context,
+                              ),
+                              _buildPremiumButton(
+                                Icons.check_rounded,
+                                Colors.green,
+                                () =>
+                                    controller.swipe(CardSwiperDirection.right),
+                                context,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
+
+                if (_showTutorial && fileProvider.files.isNotEmpty)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            top: 80,
+                            right: 30,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                const Icon(
+                                  Icons.arrow_upward_rounded,
+                                  color: Colors.white,
+                                  size: 40,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  "Review & delete\nhere",
+                                  textAlign: TextAlign.right,
+                                  style: GoogleFonts.lexend(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    Column(
+                                      children: [
+                                        const Icon(
+                                          Icons.swipe_left_rounded,
+                                          color: Colors.redAccent,
+                                          size: 60,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          "Swipe Left\nto Delete",
+                                          textAlign: TextAlign.center,
+                                          style: GoogleFonts.lexend(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Column(
+                                      children: [
+                                        const Icon(
+                                          Icons.swipe_right_rounded,
+                                          color: Colors.greenAccent,
+                                          size: 60,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          "Swipe Right\nto Keep",
+                                          textAlign: TextAlign.center,
+                                          style: GoogleFonts.lexend(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 80),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFFF8A65),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 40,
+                                      vertical: 15,
+                                    ),
+                                  ),
+                                  onPressed: _dismissTutorial,
+                                  child: Text(
+                                    "GOT IT!",
+                                    style: GoogleFonts.lexend(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
     );
   }
 
-  Widget _buildCircleButton(IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildPremiumButton(
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+    BuildContext context,
+  ) {
     return Container(
-      width: 70,
-      height: 70,
+      width: 75,
+      height: 75,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: Theme.of(context).cardColor,
         shape: BoxShape.circle,
-        border: Border.all(color: color, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 15,
+            spreadRadius: 2,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: IconButton(
-        icon: Icon(icon, color: color, size: 35),
-        onPressed: onTap,
+        icon: Icon(icon, color: color, size: 38),
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
       ),
     );
   }
@@ -201,7 +494,7 @@ class FileCard extends StatefulWidget {
 
 class _FileCardState extends State<FileCard> {
   late Future<Uint8List?> _thumbnailFuture;
-  AudioPlayer? _audioPlayer; 
+  AudioPlayer? _audioPlayer;
   bool _isPlaying = false;
 
   @override
@@ -214,9 +507,9 @@ class _FileCardState extends State<FileCard> {
   void didUpdateWidget(FileCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.file.path != widget.file.path) {
-      _stopAndResetAudio(); 
+      _stopAndResetAudio();
       setState(() {
-        _initMedia(); 
+        _initMedia();
       });
     }
   }
@@ -273,20 +566,22 @@ class _FileCardState extends State<FileCard> {
     String fileName = widget.file.path.split('/').last;
 
     return Card(
-      key: ValueKey(widget.file.path), 
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+      key: ValueKey(widget.file.path),
+      elevation: 12,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(35),
           color: Theme.of(context).cardColor,
         ),
         child: Column(
           children: [
             Expanded(
               child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-                child: AnimatedSwitcher( 
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(35),
+                ),
+                child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   child: Container(
                     key: ValueKey(widget.file.path),
@@ -298,7 +593,7 @@ class _FileCardState extends State<FileCard> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -306,18 +601,22 @@ class _FileCardState extends State<FileCard> {
                     fileName,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
+                      fontSize: 18,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       _buildTag(extension.toUpperCase(), context),
                       const Spacer(),
                       Text(
                         "${(File(widget.file.path).lengthSync() / 1024 / 1024).toStringAsFixed(2)} MB",
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[600],
+                        ),
                       ),
                     ],
                   ),
@@ -338,8 +637,7 @@ class _FileCardState extends State<FileCard> {
         backgroundDecoration: const BoxDecoration(color: Colors.transparent),
         minScale: PhotoViewComputedScale.contained,
       );
-    }
-    else if (extension == 'pdf') {
+    } else if (extension == 'pdf') {
       return PDFView(
         key: ValueKey(file.path),
         filePath: file.path,
@@ -349,8 +647,7 @@ class _FileCardState extends State<FileCard> {
         onError: (e) =>
             const Center(child: Icon(Icons.error, color: Colors.red)),
       );
-    }
-    else if (['mp4', 'mov', 'avi', 'mkv'].contains(extension)) {
+    } else if (['mp4', 'mov', 'avi', 'mkv'].contains(extension)) {
       return FutureBuilder<Uint8List?>(
         future: _thumbnailFuture,
         builder: (context, snapshot) {
@@ -372,8 +669,7 @@ class _FileCardState extends State<FileCard> {
           return const Center(child: CircularProgressIndicator());
         },
       );
-    }
-    else if (['mp3', 'wav', 'aac', 'm4a', 'opus'].contains(extension)) {
+    } else if (['mp3', 'wav', 'aac', 'm4a', 'opus'].contains(extension)) {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -395,8 +691,7 @@ class _FileCardState extends State<FileCard> {
           ),
         ],
       );
-    }
-    else if (extension == 'apk') {
+    } else if (extension == 'apk') {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: const [
@@ -405,12 +700,10 @@ class _FileCardState extends State<FileCard> {
           Text("Android App Installer", style: TextStyle(color: Colors.grey)),
         ],
       );
-    }
-    else {
+    } else {
       String letter = fileName.isNotEmpty ? fileName[0].toUpperCase() : "?";
       Color randomColor =
           Colors.primaries[Random().nextInt(Colors.primaries.length)];
-
       return Container(
         color: randomColor.withValues(alpha: 0.2),
         child: Center(
@@ -444,11 +737,10 @@ class _FileCardState extends State<FileCard> {
       ),
     );
   }
-  
+
   String get fileName => widget.file.path.split('/').last;
 }
 
-// GRID VIEW TRASH BIN
 class DeleteQueueScreen extends StatelessWidget {
   const DeleteQueueScreen({super.key});
 
@@ -458,16 +750,36 @@ class DeleteQueueScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Trash (${fileProvider.deleteQueue.length})"),
+        title: Text(
+          "Trash (${fileProvider.deleteQueue.length})",
+          style: GoogleFonts.lexend(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.red.withValues(alpha: 0.1),
         foregroundColor: Colors.redAccent,
+        elevation: 0,
       ),
       body: fileProvider.deleteQueue.isEmpty
-          ? const Center(child: Text("No files queued for deletion."))
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.delete_outline_rounded,
+                    size: 80,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "Trash is empty.",
+                    style: GoogleFonts.lexend(fontSize: 18, color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
           : GridView.builder(
               padding: const EdgeInsets.all(12),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, 
+                crossAxisCount: 3,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
                 childAspectRatio: 0.8,
@@ -489,14 +801,24 @@ class DeleteQueueScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Expanded(
-                                child: _buildMiniPreview(file, extension, context),
+                                child: _buildMiniPreview(
+                                  file,
+                                  extension,
+                                  context,
+                                ),
                               ),
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4.0,
+                                  vertical: 8.0,
+                                ),
                                 child: Text(
-                                  name, 
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), 
-                                  maxLines: 1, 
+                                  name,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   textAlign: TextAlign.center,
                                 ),
@@ -515,11 +837,18 @@ class DeleteQueueScreen extends StatelessWidget {
                             color: Colors.white,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.restore, color: Colors.green, size: 28),
+                          child: const Icon(
+                            Icons.restore,
+                            color: Colors.green,
+                            size: 28,
+                          ),
                         ),
-                        onPressed: () => fileProvider.restoreFile(file), 
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          fileProvider.restoreFile(file);
+                        },
                       ),
-                    )
+                    ),
                   ],
                 );
               },
@@ -528,35 +857,140 @@ class DeleteQueueScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         child: ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red, 
+            backgroundColor: Colors.red,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 15),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
           ),
           icon: const Icon(Icons.delete_forever),
-          label: const Text("DELETE ALL PERMANENTLY", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-          onPressed: fileProvider.deleteQueue.isEmpty 
-              ? null 
+          label: Text(
+            "DELETE ALL PERMANENTLY",
+            style: GoogleFonts.lexend(
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+            ),
+          ),
+          onPressed: fileProvider.deleteQueue.isEmpty
+              ? null
               : () {
-                  fileProvider.commitDeletion();
-                  Navigator.pop(context);
+                  showDialog(
+                    context: context,
+                    builder: (BuildContext dialogContext) {
+                      return AlertDialog(
+                        backgroundColor: Theme.of(context).cardColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        title: Row(
+                          children: const [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.red,
+                              size: 28,
+                            ),
+                            SizedBox(width: 10),
+                            Text("Confirm Delete"),
+                          ],
+                        ),
+                        content: Text(
+                          "Are you sure you want to permanently delete these ${fileProvider.deleteQueue.length} files?",
+                          style: GoogleFonts.lexend(fontSize: 14),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text(
+                              "CANCEL",
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () {
+                              fileProvider.prepareCommitDeletion();
+                              Navigator.pop(dialogContext);
+                              Navigator.pop(context);
+
+                              ScaffoldMessenger.of(context)
+                                  .showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "Files marked for permanent deletion.",
+                                        style: GoogleFonts.lexend(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      backgroundColor: Colors.black87,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(15),
+                                      ),
+                                      duration: const Duration(seconds: 4),
+                                      action: SnackBarAction(
+                                        label: "UNDO",
+                                        textColor: const Color(0xFFFF8A65),
+                                        onPressed: () {
+                                          fileProvider.undoCommitDeletion();
+                                        },
+                                      ),
+                                    ),
+                                  )
+                                  .closed
+                                  .then((reason) {
+                                    if (reason != SnackBarClosedReason.action) {
+                                      fileProvider.executeFinalDeletion();
+                                    }
+                                  });
+                            },
+                            child: const Text("DELETE ALL"),
+                          ),
+                        ],
+                      );
+                    },
+                  );
                 },
         ),
       ),
     );
   }
 
-  Widget _buildMiniPreview(FileSystemEntity file, String extension, BuildContext context) {
+  Widget _buildMiniPreview(
+    FileSystemEntity file,
+    String extension,
+    BuildContext context,
+  ) {
     if (['jpg', 'jpeg', 'png', 'webp'].contains(extension)) {
       return Image.file(File(file.path), fit: BoxFit.cover, cacheWidth: 200);
     } else if (['mp4', 'mov', 'avi', 'mkv'].contains(extension)) {
-      return Container(color: Colors.red.withValues(alpha: 0.1), child: const Icon(Icons.videocam, size: 40, color: Colors.red));
+      return Container(
+        color: Colors.red.withValues(alpha: 0.1),
+        child: const Icon(Icons.videocam, size: 40, color: Colors.red),
+      );
     } else if (['mp3', 'wav', 'aac'].contains(extension)) {
-      return Container(color: Colors.orange.withValues(alpha: 0.1), child: const Icon(Icons.audiotrack, size: 40, color: Colors.orange));
+      return Container(
+        color: Colors.orange.withValues(alpha: 0.1),
+        child: const Icon(Icons.audiotrack, size: 40, color: Colors.orange),
+      );
     } else if (extension == 'pdf') {
-       return Container(color: Colors.blue.withValues(alpha: 0.1), child: const Icon(Icons.picture_as_pdf, size: 40, color: Colors.blue));
+      return Container(
+        color: Colors.blue.withValues(alpha: 0.1),
+        child: const Icon(Icons.picture_as_pdf, size: 40, color: Colors.blue),
+      );
     } else {
-      return Container(color: Colors.grey.withValues(alpha: 0.1), child: Icon(Icons.insert_drive_file, size: 40, color: Theme.of(context).primaryColor));
+      return Container(
+        color: Colors.grey.withValues(alpha: 0.1),
+        child: Icon(
+          Icons.insert_drive_file,
+          size: 40,
+          color: Theme.of(context).primaryColor,
+        ),
+      );
     }
   }
 }

@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 class FileProvider with ChangeNotifier {
   List<FileSystemEntity> _files = [];
   List<FileSystemEntity> _deleteQueue = [];
+  List<FileSystemEntity> _limboQueue = []; 
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -19,6 +20,7 @@ class FileProvider with ChangeNotifier {
     _currentPath = path;
     _files = [];
     _deleteQueue = [];
+    _limboQueue = [];
     notifyListeners();
     loadFiles();
   }
@@ -39,13 +41,41 @@ class FileProvider with ChangeNotifier {
       Directory dir = Directory(_currentPath);
 
       if (await dir.exists()) {
-        var rawFiles = await dir.list().toList();
-        _files = rawFiles.whereType<File>().toList();
+        var rawFiles = await dir.list(recursive: true).toList();
+        var filesOnly = rawFiles.whereType<File>().where((f) => !f.path.contains('/.')).toList();
 
-        // Sorts files so the most recently modified/added appear first
-        _files.sort(
-          (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+        // Fetch stats (size, modified date) for all files safely
+        var fileStats = await Future.wait(
+          filesOnly.map((f) async {
+            try {
+              var stat = await f.stat();
+              return {'file': f, 'modified': stat.modified, 'size': stat.size, 'name': f.path.split('/').last};
+            } catch (e) {
+              return null; // Skip unreadable files
+            }
+          }),
         );
+
+        var validStats = fileStats.where((e) => e != null).toList();
+
+        // ✅ THE ULTIMATE DUPLICATE FIX: Filter by Name + Exact Byte Size
+        final seenSignatures = <String>{};
+        final deduplicatedStats = [];
+
+        for (var stat in validStats) {
+          // Creates a unique ID like "image.jpg_409600"
+          String signature = "${stat!['name']}_${stat['size']}";
+          if (seenSignatures.add(signature)) {
+            deduplicatedStats.add(stat);
+          }
+        }
+
+        // Sort by newest first
+        deduplicatedStats.sort(
+          (a, b) => (b['modified'] as DateTime).compareTo(a['modified'] as DateTime),
+        );
+
+        _files = deduplicatedStats.map((e) => e['file'] as File).toList();
       } else {
         _errorMessage = "Folder not found: $_currentPath";
       }
@@ -69,11 +99,8 @@ class FileProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void swipeRight(int index) {
-    // Kept safe, do nothing
-  }
+  void swipeRight(int index) {}
 
-  // Target specific files to restore from the grid
   void restoreFile(FileSystemEntity file) {
     if (_deleteQueue.contains(file)) {
       _deleteQueue.remove(file);
@@ -81,8 +108,20 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  Future<void> commitDeletion() async {
-    for (var file in _deleteQueue) {
+  void prepareCommitDeletion() {
+    _limboQueue = List.from(_deleteQueue);
+    _deleteQueue.clear();
+    notifyListeners();
+  }
+
+  void undoCommitDeletion() {
+    _deleteQueue = List.from(_limboQueue);
+    _limboQueue.clear();
+    notifyListeners();
+  }
+
+  Future<void> executeFinalDeletion() async {
+    for (var file in _limboQueue) {
       try {
         if (await file.exists()) {
           await file.delete();
@@ -91,7 +130,7 @@ class FileProvider with ChangeNotifier {
         debugPrint("Error deleting file: $e");
       }
     }
-    _deleteQueue.clear();
+    _limboQueue.clear();
     await loadFiles();
   }
 }
