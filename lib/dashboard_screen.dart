@@ -8,7 +8,7 @@ import 'package:disk_space_2/disk_space_2.dart';
 
 import 'file_provider.dart';
 import 'main.dart';
-import 'whatsapp_screen.dart';
+import 'whatsapp_screen.dart'; // Ensure this matches your file name
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -28,7 +28,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _fetchStorage();
   }
 
-  // ✅ REAL STORAGE LOGIC
+  // ✅ This is the function we will call every time you return to the dashboard!
   Future<void> _fetchStorage() async {
     double? free = await DiskSpace.getFreeDiskSpace;
     double? total = await DiskSpace.getTotalDiskSpace;
@@ -45,7 +45,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamically pulls colors from the active theme (Peach vs System Dark/Light)
     Color bgColor = Theme.of(context).scaffoldBackgroundColor;
     Color cardColor = Theme.of(context).cardColor;
     Color accentColor = Theme.of(context).primaryColor;
@@ -62,7 +61,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               const SizedBox(height: 10),
 
-              // --- TOP ROW: GREETING & THEME TOGGLE ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -73,7 +71,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: textColor.withValues(alpha: 0.6),
                     ),
                   ),
-                  // ✅ THEME TOGGLE MENU
                   PopupMenuButton<String>(
                     icon: Icon(Icons.palette_outlined, color: textColor),
                     shape: RoundedRectangleBorder(
@@ -108,7 +105,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 30),
 
-              // --- STORAGE OVERVIEW CARD ---
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -128,10 +124,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       radius: 45.0,
                       lineWidth: 12.0,
                       animation: true,
-                      percent: _percent.clamp(
-                        0.0,
-                        1.0,
-                      ), // Bound between 0 and 1
+                      animateFromLastPercent:
+                          true, // ✅ Makes the dial spin smoothly when updated
+                      percent: _percent.clamp(0.0, 1.0),
                       circularStrokeCap: CircularStrokeCap.round,
                       progressColor: accentColor,
                       backgroundColor: Colors.grey.withValues(alpha: 0.2),
@@ -147,7 +142,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "Accessible Storage", // ✅ Changed to make sense of the GB difference
+                            "Accessible Storage",
                             style: GoogleFonts.lexend(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -155,7 +150,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          // LIVE DATA IN GB
                           Text(
                             "${_usedSpace.toStringAsFixed(1)}/${_totalSpace.toStringAsFixed(1)} GB used",
                             style: GoogleFonts.lexend(
@@ -164,7 +158,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          // ✅ Added disclaimer for OS storage
                           Text(
                             "*Excludes hidden system files",
                             style: GoogleFonts.lexend(
@@ -215,7 +208,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 20),
 
-              // --- CATEGORIES LIST ---
               Expanded(
                 child: ListView(
                   physics: const BouncingScrollPhysics(),
@@ -224,12 +216,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       context,
                       "WhatsApp",
                       FontAwesomeIcons.whatsapp,
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const WhatsAppMenuScreen(),
-                        ),
-                      ),
+                      () async {
+                        // ✅ AWAIT the push, then refresh!
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const WhatsAppMenuScreen(),
+                          ),
+                        );
+                        _fetchStorage();
+                      },
                     ),
                     _buildCategoryPill(
                       context,
@@ -326,26 +322,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _openDownloadsCleaner(BuildContext context) {
+  // ✅ ALL NAVIGATORS NOW AWAIT THE RETURN, THEN REFRESH STORAGE
+
+  Future<void> _openDownloadsCleaner(BuildContext context) async {
     Provider.of<FileProvider>(
       context,
       listen: false,
     ).setTargetFolder('/storage/emulated/0/Download');
-    Navigator.push(
+
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const HomeScreen()),
     );
+    _fetchStorage(); // Updates the pie chart when you come back
   }
 
-  void _openGalleryCleaner(BuildContext context) {
+  Future<void> _openGalleryCleaner(BuildContext context) async {
     Provider.of<FileProvider>(
       context,
       listen: false,
-    ).setTargetFolder('/storage/emulated/0/DCIM/Camera');
-    Navigator.push(
+    ).setTargetFolder('/storage/emulated/0/DCIM');
+
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const HomeScreen()),
     );
+    _fetchStorage(); // Updates the pie chart when you come back
   }
 
   Future<void> _pickCustomFolder(BuildContext context) async {
@@ -356,10 +358,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         context,
         listen: false,
       ).setTargetFolder(selectedDirectory);
-      Navigator.push(
+
+      await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
+      _fetchStorage(); // Updates the pie chart when you come back
     }
   }
 }

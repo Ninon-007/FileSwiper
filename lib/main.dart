@@ -3,7 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:pdfx/pdfx.dart';
+import 'package:open_file/open_file.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -142,7 +143,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final CardSwiperController controller = CardSwiperController();
   bool _showTutorial = false;
-  bool _isFinished = false; // ✅ Added to track when the deck empties
+  bool _isFinished = false;
 
   @override
   void initState() {
@@ -227,19 +228,17 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: fileProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : (fileProvider.files.isEmpty ||
-                _isFinished) // ✅ NOW CHECKS IF FINISHED
+          : (fileProvider.files.isEmpty || _isFinished)
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(
-                    Icons.inventory_2_outlined, // Changed to a premium box icon
+                    Icons.inventory_2_outlined,
                     size: 80,
                     color: Colors.green,
                   ),
                   const SizedBox(height: 20),
-                  // ✅ UPDATED PREMIUM END MESSAGE
                   Text(
                     "Folder completely scanned!",
                     textAlign: TextAlign.center,
@@ -288,7 +287,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             controller: controller,
                             cardsCount: fileProvider.files.length,
                             isLoop: false,
-                            // ✅ THIS TRIGGERS THE "END OF FILES" SCREEN
                             onEnd: () {
                               setState(() {
                                 _isFinished = true;
@@ -517,14 +515,37 @@ class _FileCardState extends State<FileCard> {
   void _initMedia() {
     String extension = widget.file.path.split('.').last.toLowerCase();
     if (['mp4', 'mov', 'avi', 'mkv'].contains(extension)) {
-      _thumbnailFuture = VideoThumbnail.thumbnailData(
-        video: widget.file.path,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 512,
-        quality: 50,
-      );
+      try {
+        _thumbnailFuture = VideoThumbnail.thumbnailData(
+          video: widget.file.path,
+          imageFormat: ImageFormat.JPEG,
+          maxWidth: 512,
+          quality: 50,
+        ).catchError((_) => null);
+      } catch (e) {
+        _thumbnailFuture = Future.value(null);
+      }
+    } else if (extension == 'pdf') {
+      _thumbnailFuture = _generatePdfThumbnail(widget.file.path);
     } else {
       _thumbnailFuture = Future.value(null);
+    }
+  }
+
+  Future<Uint8List?> _generatePdfThumbnail(String path) async {
+    try {
+      final document = await PdfDocument.openFile(path);
+      final page = await document.getPage(1);
+      final pageImage = await page.render(
+        width: page.width * 2,
+        height: page.height * 2,
+        format: PdfPageImageFormat.jpeg,
+      );
+      await page.close();
+      await document.close();
+      return pageImage?.bytes;
+    } catch (e) {
+      return null;
     }
   }
 
@@ -581,14 +602,11 @@ class _FileCardState extends State<FileCard> {
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(35),
                 ),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Container(
-                    key: ValueKey(widget.file.path),
-                    color: Colors.black12,
-                    width: double.infinity,
-                    child: _buildContent(extension, widget.file),
-                  ),
+                child: Container(
+                  key: ValueKey(widget.file.path),
+                  color: Colors.black12,
+                  width: double.infinity,
+                  child: _buildContent(extension, widget.file, fileName),
                 ),
               ),
             ),
@@ -629,7 +647,11 @@ class _FileCardState extends State<FileCard> {
     );
   }
 
-  Widget _buildContent(String extension, FileSystemEntity file) {
+  Widget _buildContent(
+    String extension,
+    FileSystemEntity file,
+    String fileName,
+  ) {
     if (['jpg', 'jpeg', 'png', 'webp'].contains(extension)) {
       return PhotoView(
         key: ValueKey(file.path),
@@ -637,17 +659,7 @@ class _FileCardState extends State<FileCard> {
         backgroundDecoration: const BoxDecoration(color: Colors.transparent),
         minScale: PhotoViewComputedScale.contained,
       );
-    } else if (extension == 'pdf') {
-      return PDFView(
-        key: ValueKey(file.path),
-        filePath: file.path,
-        enableSwipe: false,
-        autoSpacing: false,
-        pageFling: false,
-        onError: (e) =>
-            const Center(child: Icon(Icons.error, color: Colors.red)),
-      );
-    } else if (['mp4', 'mov', 'avi', 'mkv'].contains(extension)) {
+    } else if (['mp4', 'mov', 'avi', 'mkv', 'pdf'].contains(extension)) {
       return FutureBuilder<Uint8List?>(
         future: _thumbnailFuture,
         builder: (context, snapshot) {
@@ -658,10 +670,65 @@ class _FileCardState extends State<FileCard> {
               fit: StackFit.expand,
               children: [
                 Image.memory(snapshot.data!, fit: BoxFit.cover),
-                const Icon(
-                  Icons.play_circle_fill,
-                  size: 60,
-                  color: Colors.white70,
+                if (extension != 'pdf')
+                  GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      OpenFile.open(file.path);
+                    },
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.play_circle_fill,
+                            size: 65,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white38),
+                            ),
+                            child: const Text(
+                              "Open Video",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          }
+          if (snapshot.connectionState == ConnectionState.done &&
+              snapshot.data == null) {
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  extension == 'pdf'
+                      ? Icons.picture_as_pdf_rounded
+                      : Icons.video_file,
+                  size: 80,
+                  color: Colors.redAccent,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  extension == 'pdf' ? "PDF Document" : "Video File",
+                  style: const TextStyle(color: Colors.grey),
                 ),
               ],
             );
@@ -702,17 +769,17 @@ class _FileCardState extends State<FileCard> {
       );
     } else {
       String letter = fileName.isNotEmpty ? fileName[0].toUpperCase() : "?";
-      Color randomColor =
-          Colors.primaries[Random().nextInt(Colors.primaries.length)];
+      Color lockedColor =
+          Colors.primaries[fileName.hashCode.abs() % Colors.primaries.length];
       return Container(
-        color: randomColor.withValues(alpha: 0.2),
+        color: lockedColor.withValues(alpha: 0.2),
         child: Center(
           child: Text(
             letter,
             style: TextStyle(
               fontSize: 100,
               fontWeight: FontWeight.bold,
-              color: randomColor,
+              color: lockedColor,
             ),
           ),
         ),
@@ -737,8 +804,6 @@ class _FileCardState extends State<FileCard> {
       ),
     );
   }
-
-  String get fileName => widget.file.path.split('/').last;
 }
 
 class DeleteQueueScreen extends StatelessWidget {
@@ -912,15 +977,22 @@ class DeleteQueueScreen extends StatelessWidget {
                               foregroundColor: Colors.white,
                             ),
                             onPressed: () {
+                              // ✅ FIX 1: Capture the messenger BEFORE we destroy the screens
+                              final messenger = ScaffoldMessenger.of(context);
+
+                              // ✅ FIX 2: Push files to Limbo
                               fileProvider.prepareCommitDeletion();
+
+                              // ✅ FIX 3: Close dialog and screen safely
                               Navigator.pop(dialogContext);
                               Navigator.pop(context);
 
-                              ScaffoldMessenger.of(context)
+                              // ✅ FIX 4: Use the captured messenger to ensure the timer works!
+                              messenger
                                   .showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        "Files marked for permanent deletion.",
+                                        "Files deleted permanently !.",
                                         style: GoogleFonts.lexend(
                                           color: Colors.white,
                                           fontWeight: FontWeight.bold,
@@ -943,6 +1015,7 @@ class DeleteQueueScreen extends StatelessWidget {
                                   )
                                   .closed
                                   .then((reason) {
+                                    // If the user didn't click UNDO, execute the kill command
                                     if (reason != SnackBarClosedReason.action) {
                                       fileProvider.executeFinalDeletion();
                                     }
@@ -966,7 +1039,15 @@ class DeleteQueueScreen extends StatelessWidget {
     BuildContext context,
   ) {
     if (['jpg', 'jpeg', 'png', 'webp'].contains(extension)) {
-      return Image.file(File(file.path), fit: BoxFit.cover, cacheWidth: 200);
+      return Image.file(
+        File(file.path),
+        fit: BoxFit.cover,
+        cacheWidth: 200,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey.withValues(alpha: 0.2),
+          child: const Icon(Icons.broken_image, color: Colors.grey),
+        ),
+      );
     } else if (['mp4', 'mov', 'avi', 'mkv'].contains(extension)) {
       return Container(
         color: Colors.red.withValues(alpha: 0.1),

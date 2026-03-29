@@ -5,7 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 class FileProvider with ChangeNotifier {
   List<FileSystemEntity> _files = [];
   List<FileSystemEntity> _deleteQueue = [];
-  List<FileSystemEntity> _limboQueue = []; 
+  List<FileSystemEntity> _limboQueue = [];
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -42,37 +42,48 @@ class FileProvider with ChangeNotifier {
 
       if (await dir.exists()) {
         var rawFiles = await dir.list(recursive: true).toList();
-        var filesOnly = rawFiles.whereType<File>().where((f) => !f.path.contains('/.')).toList();
+        var filesOnly = rawFiles
+            .whereType<File>()
+            .where((f) => !f.path.contains('/.'))
+            .toList();
 
-        // Fetch stats (size, modified date) for all files safely
         var fileStats = await Future.wait(
           filesOnly.map((f) async {
             try {
               var stat = await f.stat();
-              return {'file': f, 'modified': stat.modified, 'size': stat.size, 'name': f.path.split('/').last};
+              return {
+                'file': f,
+                'modified': stat.modified,
+                'size': stat.size,
+                'name': f.path.split('/').last,
+              };
             } catch (e) {
-              return null; // Skip unreadable files
+              return null;
             }
           }),
         );
 
-        var validStats = fileStats.where((e) => e != null).toList();
+        // ✅ FIX: Cleanly cast to non-nullable Map and use curly braces to satisfy the Analyzer
+        var validStats = fileStats.whereType<Map<String, dynamic>>().where((e) {
+          if ((e['size'] as int) < 5120) {
+            return false; // Skips invisible 1KB WhatsApp junk
+          }
+          return true;
+        }).toList();
 
-        // ✅ THE ULTIMATE DUPLICATE FIX: Filter by Name + Exact Byte Size
         final seenSignatures = <String>{};
-        final deduplicatedStats = [];
+        final deduplicatedStats = <Map<String, dynamic>>[];
 
         for (var stat in validStats) {
-          // Creates a unique ID like "image.jpg_409600"
-          String signature = "${stat!['name']}_${stat['size']}";
+          // ✅ FIX: stat is strictly non-nullable now, so stat['name'] is perfectly safe
+          String signature = "${stat['name']}_${stat['size']}";
           if (seenSignatures.add(signature)) {
             deduplicatedStats.add(stat);
           }
         }
 
-        // Sort by newest first
         deduplicatedStats.sort(
-          (a, b) => (b['modified'] as DateTime).compareTo(a['modified'] as DateTime),
+          (a, b) => (b['size'] as int).compareTo(a['size'] as int),
         );
 
         _files = deduplicatedStats.map((e) => e['file'] as File).toList();
@@ -88,10 +99,13 @@ class FileProvider with ChangeNotifier {
   }
 
   Future<bool> _requestPermission() async {
-    if (await Permission.manageExternalStorage.request().isGranted) {
-      return true;
+    if (Platform.isAndroid) {
+      if (await Permission.manageExternalStorage.request().isGranted) {
+        return true;
+      }
+      return await Permission.storage.request().isGranted;
     }
-    return await Permission.storage.request().isGranted;
+    return true;
   }
 
   void swipeLeft(int index) {
@@ -127,7 +141,14 @@ class FileProvider with ChangeNotifier {
           await file.delete();
         }
       } catch (e) {
-        debugPrint("Error deleting file: $e");
+        debugPrint("Standard delete failed, attempting force sync: $e");
+        try {
+          if (file is File) {
+            file.deleteSync();
+          }
+        } catch (fallbackError) {
+          debugPrint("Total deletion failure: $fallbackError");
+        }
       }
     }
     _limboQueue.clear();
