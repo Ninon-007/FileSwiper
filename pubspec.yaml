@@ -55,8 +55,9 @@ dependencies:
   percent_indicator: ^4.2.3
   shared_preferences: ^2.2.2
   device_info_plus: ^10.1.0
-  pdfx: ^2.9.2
   disk_space_2: ^1.0.4  # Add this for real storage data
+  video_player: ^2.11.1
+  share_plus: ^12.0.1
   
 dev_dependencies:
   flutter_test:
@@ -81,13 +82,7 @@ flutter:
     - assets/fileswiperlogo.png
 
 # This tells the package exactly which image to use for the app icon
-# This tells the package exactly which image to use for the app icon
 flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/fileswiperlogo.png"
-  # ✅ Fixes the "Icon stuck inside a circle" issue on normal screens
-  adaptive_icon_background: "#FFF5F0" 
-  adaptive_icon_foreground: "assets/fileswiperlogo.png"
-  # ✅ Fixes the Themed Icon issue (Makes it match Chrome, Gmail, etc.)
-  monochrome_icon: "assets/fileswiperlogo.png"
